@@ -46,7 +46,7 @@ def chunk_markdown(
 
 if __name__ == "__main__":
     import os
-    from llm.gemini import get_embedding_model
+    from llm.openai import get_embedding_model
 
     embeddings = get_embedding_model()
 

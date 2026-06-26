@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from llm.gemini import get_embedding_model
+from llm.openai import get_embedding_model
 
 from ingestion.pdf_to_markdown import PDFToMarkdownConverter
 from ingestion.semantic_chunker import chunk_markdown

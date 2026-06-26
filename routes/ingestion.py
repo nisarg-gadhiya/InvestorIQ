@@ -2,7 +2,7 @@ import shutil
 from fastapi import APIRouter, File, UploadFile
 from pathlib import Path
 import os
-from llm.gemini import get_embedding_model
+from llm.openai import get_embedding_model
 from vectorstore.chromadb_store import ChromaDBVectorStore
 from ingestion.ingest_documents import ingest_document
 

@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from vectorstore.chromadb_store import ChromaDBVectorStore, Retriever
-from llm.gemini import get_gemini_client
+from llm.openai import get_openai_client
 
 router = APIRouter()
 
@@ -38,7 +38,7 @@ async def chat(request: ChatRequest):
         # Build chat prompt – include retrieved context and the user question
         prompt = f"You are an expert financial analyst. Use the following context from corporate reports to answer the user's question. If the context does not contain relevant information, politely indicate that you do not have enough data.\n\nContext:\n{context}\n\nUser Question: {request.question}\n\nAnswer:"
 
-        client = get_gemini_client()
+        client = get_openai_client()
         response = client.generate_content(prompt)
         answer = response.text
         return {"answer": answer}

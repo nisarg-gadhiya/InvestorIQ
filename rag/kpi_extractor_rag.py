@@ -1,10 +1,11 @@
 import os
+import re
 from types import SimpleNamespace
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, field_validator, Field
 
-from llm.gemini import get_structured_completion
+from llm.openai import get_structured_completion
 from vectorstore.chromadb_store import ChromaDBVectorStore
 
 load_dotenv()
@@ -99,15 +100,21 @@ def retrieve_context(
     new products, expansion, market growth
     """
 
+    # Query 4: Company and year-specific financial results
+    company_year_query = f"""
+    {company} {year} annual report, financial results,
+    revenue, net income, operating income, cash flow, assets, liabilities
+    """
+
     all_docs = []
     
     # Retrieve from each query
-    for query in [financial_query, risks_query, growth_query]:
+    for query in [financial_query, risks_query, growth_query, company_year_query]:
         documents = retriever.invoke(
             query=query,
             company=company,
             year=year,
-            top_k=10
+            top_k=20
         )
         all_docs.extend(documents)
     
@@ -144,25 +151,79 @@ Context from Annual Report:
 
 Extract the following information from the context:
 
-1. **Revenue**: Total annual revenue (look for "revenue", "net sales", "total revenues")
-2. **Net Income**: Bottom line profit (look for "net income", "net earnings")
-3. **Operating Income**: Operating profit (look for "operating income", "operating profit")
-4. **Cash Flow from Operating Activities**: Operating cash flow
-5. **Total Assets**: Total company assets
-6. **Total Liabilities**: Total liabilities
-7. **Top Risk Factors**: List 3-5 main risks or challenges mentioned. Look for: "risks", "challenges", "uncertainties", "threats". If multiple mentions, pick the most significant ones. Return as a list.
-8. **Top Growth Drivers**: List 3-5 main growth opportunities or drivers. Look for: "growth", "opportunities", "strategic initiatives", "new products", "expansion". Return as a list.
+1. **Revenue**: Total annual revenue. Search for values such as "revenue", "net sales", "total revenues", "sales revenue", or table entries.
+2. **Net Income**: Bottom line profit. Search for "net income", "net earnings", "profit", "loss".
+3. **Operating Income**: Operating profit. Search for "operating income", "operating profit", "income from operations".
+4. **Cash Flow from Operating Activities**: Operating cash flow. Search for "cash flow from operating activities", "operating cash flow".
+5. **Total Assets**: Total company assets. Search for "total assets", "assets".
+6. **Total Liabilities**: Total liabilities. Search for "total liabilities", "liabilities".
+7. **Top Risk Factors**: List 3-5 main risks or challenges mentioned. Search for: "risks", "challenges", "uncertainties", "threats", "headwinds".
+8. **Top Growth Drivers**: List 3-5 main growth opportunities or drivers. Search for: "growth", "opportunities", "strategic initiatives", "new products", "expansion", "innovation".
 
 **IMPORTANT INSTRUCTIONS:**
-- Extract ONLY from the provided context
-- Return null ONLY if the information is genuinely not in the context
-- For Risk Factors and Growth Drivers: Even if not labeled as such, infer them from the business discussion
-- Financial values must match the report exactly (include currency symbols and formatting)
-- For lists: Return as an array of strings
-- Return VALID JSON ONLY, no markdown formatting
+- Extract ONLY from the provided context.
+- Return null ONLY if the information is genuinely not in the context.
+- For Risk Factors and Growth Drivers: Even if not labeled as such, infer them from the business discussion.
+- Financial values must be returned in a consistent unit and format.
+- If the report indicates values are presented "in thousands" or "in millions", convert them to the corresponding full dollar amounts before returning.
+- Use commas and a leading currency symbol, for example: "$1,000,000".
+- For lists: Return as an array of strings.
+- Return VALID JSON ONLY, with the exact keys shown in the example below.
 
-If any field cannot be found despite thorough search, return null for that field.
+Example output format:
+{{
+  "Revenue": "$1,000,000",
+  "Net Income": "$200,000",
+  "Operating Income": "$150,000",
+  "Cash Flow from Operating Activities": "$120,000",
+  "Total Assets": "$5,000,000",
+  "Total Liabilities": "$2,500,000",
+  "Top Risk Factors": ["Factor 1", "Factor 2"],
+  "Top Growth Drivers": ["Driver 1", "Driver 2"]
+}}
+
+Do not include any additional keys, markdown, or explanations. If a field cannot be found despite a thorough search, use null for that field.
 """
+
+
+def normalize_currency(value: str | int | None) -> str | None:
+    """Normalize currency values to a consistent string format."""
+    if value is None:
+        return None
+
+    if isinstance(value, int):
+        return f"${value:,}"
+
+    text = str(value).strip()
+    if text.lower() == "null":
+        return None
+
+    # Remove parentheses for negative values and normalize sign
+    is_negative = False
+    if text.startswith("(") and text.endswith(")"):
+        is_negative = True
+        text = text[1:-1].strip()
+
+    # Normalize currency symbol and commas
+    cleaned = re.sub(r"[^0-9\.\-]", "", text)
+    if cleaned == "":
+        return text
+
+    try:
+        if "." in cleaned:
+            number = float(cleaned)
+            integer = int(round(number))
+            formatted = f"${integer:,}"
+        else:
+            number = int(cleaned)
+            formatted = f"${number:,}"
+    except ValueError:
+        return text
+
+    if is_negative:
+        formatted = f"({formatted[1:]})"
+
+    return formatted
 
 
 def extract_financial_metrics(
@@ -190,7 +251,21 @@ def extract_financial_metrics(
         response_model=FinancialMetrics
     )
 
-    return metrics.model_dump()
+    result = metrics.model_dump()
+
+    # Normalize financial KPI formats before saving/display
+    for key in [
+        "Revenue",
+        "Net Income",
+        "Operating Income",
+        "Cash Flow from Operating Activities",
+        "Total Assets",
+        "Total Liabilities"
+    ]:
+        if key in result:
+            result[key] = normalize_currency(result[key])
+
+    return result
 
 
 def main() -> None:
