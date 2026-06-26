@@ -1,0 +1,20 @@
+frontend:
+  api_url: http://localhost:8000
+
+backend:
+  gemini:
+    api_key: ${GEMINI_API_KEY}
+    model: gemini-2.5-flash
+  vectorstore:
+    type: chromadb
+    db_path: ${CHROMA_DB_PATH}
+    collection_name: investor-intelligence
+  embeddings:
+    model: all-MiniLM-L6-v2
+    type: sentence-transformers
+  postgres:
+    host: ${POSTGRES_HOST}
+    port: ${POSTGRES_PORT}
+    database: ${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
