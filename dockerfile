@@ -4,11 +4,9 @@ FROM python:3.12-slim
 # Set the working directory inside the container
 WORKDIR /app
 
-RUN pip install uv
-
 COPY requirements.txt ./
 
-RUN uv pip install --system -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Copy application code into the container
 COPY . /app
