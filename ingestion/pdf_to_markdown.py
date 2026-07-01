@@ -25,7 +25,15 @@ class PDFToMarkdownConverter:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        markdown_content = pymupdf4llm.to_markdown(str(pdf_file))
+        pages = pymupdf4llm.to_markdown(str(pdf_file), page_chunks=True)
+        if isinstance(pages, str):
+            markdown_content = pages
+        else:
+            page_texts = []
+            for page_index, page_item in enumerate(pages, start=1):
+                page_text = page_item.get("text", "") if isinstance(page_item, dict) else str(page_item)
+                page_texts.append(f"<!-- PAGE {page_index} -->\n{page_text}")
+            markdown_content = "\n\n".join(page_texts).strip()
 
         markdown_file = output_path / f"{pdf_file.stem}.md"
 

@@ -50,6 +50,17 @@ async def chat(request: ChatRequest):
             )
         context = "\n\n".join(doc.page_content for doc in docs)
 
+        sources = []
+        seen_sources = set()
+        for doc in docs:
+            source_key = (doc.source_file, doc.page)
+            if source_key not in seen_sources:
+                seen_sources.add(source_key)
+                sources.append({
+                    "source_file": doc.source_file,
+                    "page": doc.page
+                })
+
         recent_history = request.history[-10:]
         messages = [
             {
@@ -72,6 +83,6 @@ async def chat(request: ChatRequest):
         client = get_openai_client()
         response = client.generate_content(messages=messages)
         answer = response.text
-        return {"answer": answer}
+        return {"answer": answer, "sources": sources}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

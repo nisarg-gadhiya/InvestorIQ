@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -42,7 +43,22 @@ def chunk_markdown(
         breakpoint_threshold_type="percentile"
     )
 
-    return splitter.create_documents([markdown_content])
+    chunks = splitter.create_documents([markdown_content])
+
+    for chunk in chunks:
+        raw_content = chunk.page_content
+        marker_positions = []
+        for marker in re.finditer(r"<!--\s*PAGE\s*(\d+)\s*-->", raw_content, flags=re.IGNORECASE):
+            marker_positions.append((marker.start(), int(marker.group(1))))
+
+        if marker_positions:
+            chunk.metadata["page"] = marker_positions[-1][1]
+        else:
+            chunk.metadata["page"] = 1
+
+        chunk.page_content = re.sub(r"<!--\s*PAGE\s*\d+\s*-->", "", raw_content, flags=re.IGNORECASE).strip()
+
+    return chunks
 
 if __name__ == "__main__":
     import os

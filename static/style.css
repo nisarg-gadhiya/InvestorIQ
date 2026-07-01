@@ -1241,6 +1241,14 @@ body {
     border-top-right-radius: 4px;
 }
 
+.chat-source-line {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.8;
+    line-height: 1.4;
+}
+
 /* Typing Indicator */
 .typing-bubble {
     padding: 14px 20px;

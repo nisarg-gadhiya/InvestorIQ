@@ -61,6 +61,10 @@ def ingest_document(
     )
 
     print(f"Generated {len(chunks)} chunks for {pdf_file.name}")
+    page_counts = {}
+    for chunk in chunks:
+        page_counts[chunk.metadata.get("page", 1)] = page_counts.get(chunk.metadata.get("page", 1), 0) + 1
+    print(f"Page distribution for {pdf_file.name}: {page_counts}")
 
     vector_store.upload_chunks(
         chunks=chunks, 

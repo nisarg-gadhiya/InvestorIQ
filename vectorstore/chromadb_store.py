@@ -81,7 +81,8 @@ class ChromaDBVectorStore:
             metadatas.append({
                 "company": company,
                 "year": str(year),
-                "source_file": source_file
+                "source_file": source_file,
+                "page": chunk.metadata.get("page")
             })
             
             # Generate embedding for chunk
@@ -153,7 +154,15 @@ class Retriever:
 
         documents = []
         if results and results["documents"]:
-            for doc_text in results["documents"][0]:
-                documents.append(SimpleNamespace(page_content=doc_text))
+            texts = results["documents"][0]
+            metadatas = results.get("metadatas", [])[0] if results.get("metadatas") else []
+            for i, doc_text in enumerate(texts):
+                metadata = metadatas[i] if i < len(metadatas) else {}
+                documents.append(SimpleNamespace(
+                    page_content=doc_text,
+                    page=metadata.get("page"),
+                    company=metadata.get("company"),
+                    source_file=metadata.get("source_file")
+                ))
 
         return documents
