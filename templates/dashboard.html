@@ -445,6 +445,8 @@
 </script>
 
 <script>
+let conversationHistory = [];
+
 document.addEventListener("DOMContentLoaded", () => {
     // ----------------------------------------------------
     // 1. Dynamic Bar Width Calculations
@@ -639,6 +641,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Switch company in inspector view
 function switchCompany(companyName) {
+    conversationHistory = [];
+
     const data = companyData[companyName];
     if (!data) return;
 
@@ -704,6 +708,7 @@ function toggleChatPanel() {
     panel.classList.toggle('collapsed');
 
     if (panel.classList.contains('collapsed')) {
+        conversationHistory = [];
         wrapper.classList.add('chat-collapsed');
         tab.classList.add('visible');
     } else {
@@ -728,6 +733,7 @@ async function sendMessage() {
 
     // Add user message to chat
     appendMessage('user', question);
+    conversationHistory.push({ role: 'user', content: question });
     input.value = '';
     input.focus();
 
@@ -736,7 +742,8 @@ async function sendMessage() {
 
     try {
         const payload = {
-            question: question
+            question: question,
+            history: conversationHistory.slice(0, -1).slice(-10)
         };
         if (selectedCompany) {
             payload.company = selectedCompany;
@@ -761,6 +768,7 @@ async function sendMessage() {
         }
 
         const data = await response.json();
+        conversationHistory.push({ role: 'assistant', content: data.answer || 'No response received.' });
         appendMessage('bot', data.answer || 'No response received.');
 
     } catch (err) {

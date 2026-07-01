@@ -1,16 +1,31 @@
 import os
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from vectorstore.chromadb_store import ChromaDBVectorStore, Retriever
 from llm.openai import get_openai_client
 
 router = APIRouter()
 
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        if value not in {"user", "assistant"}:
+            raise ValueError("role must be either 'user' or 'assistant'")
+        return value
+
+
 class ChatRequest(BaseModel):
     question: str
     company: str | None = None
     year: int | None = None
+    history: list[Message] = []
+
 
 @router.post("/chat")
 async def chat(request: ChatRequest):
@@ -35,11 +50,27 @@ async def chat(request: ChatRequest):
             )
         context = "\n\n".join(doc.page_content for doc in docs)
 
-        # Build chat prompt – include retrieved context and the user question
-        prompt = f"You are an expert financial analyst. Use the following context from corporate reports to answer the user's question. If the context does not contain relevant information, politely indicate that you do not have enough data.\n\nContext:\n{context}\n\nUser Question: {request.question}\n\nAnswer:"
+        recent_history = request.history[-10:]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert financial analyst. Use the following context from "
+                    "corporate reports to answer the user's question. If the context does "
+                    "not contain relevant information, politely indicate that you do not "
+                    "have enough data.\n\nContext:\n"
+                    f"{context}"
+                ),
+            }
+        ]
+
+        for turn in recent_history:
+            messages.append({"role": turn.role, "content": turn.content})
+
+        messages.append({"role": "user", "content": request.question})
 
         client = get_openai_client()
-        response = client.generate_content(prompt)
+        response = client.generate_content(messages=messages)
         answer = response.text
         return {"answer": answer}
     except Exception as e:
