@@ -1,3 +1,4 @@
+import logging
 import uuid
 from types import SimpleNamespace
 import chromadb
@@ -28,6 +29,26 @@ class ChromaDBVectorStore:
             metadata={"hnsw:space": "cosine"}
         )
 
+    def delete_by_source_file(self, source_file: str) -> None:
+        """
+        Delete all chunks belonging to a specific source file.
+        Called before re-ingesting to prevent duplicate chunks accumulating.
+
+        Args:
+            source_file: The filename (e.g. '2024_Apple.pdf') to delete chunks for.
+        """
+        existing = self.collection.get(
+            where={"source_file": {"$eq": source_file}}
+        )
+
+        if existing and existing["ids"]:
+            self.collection.delete(
+                where={"source_file": {"$eq": source_file}}
+            )
+            logging.info(f"Deleted {len(existing['ids'])} existing chunks for '{source_file}'")
+        else:
+            logging.info(f"No existing chunks found for '{source_file}' — clean ingestion")
+
     def upload_chunks(
         self,
         chunks,
@@ -46,6 +67,8 @@ class ChromaDBVectorStore:
             year: Year for metadata.
             source_file: Source PDF filename.
         """
+        self.delete_by_source_file(source_file)
+
         ids = []
         documents = []
         metadatas = []
@@ -73,7 +96,7 @@ class ChromaDBVectorStore:
             embeddings=embeddings_list
         )
 
-        print(f"Uploaded {len(documents)} chunks to ChromaDB.")
+        logging.info(f"Uploaded {len(documents)} chunks to ChromaDB for '{source_file}'.")
 
 
 class Retriever:
