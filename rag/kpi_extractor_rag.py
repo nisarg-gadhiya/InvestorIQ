@@ -1,9 +1,10 @@
 import os
 import re
 from types import SimpleNamespace
+import numpy as np
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, Field
 
 from llm.openai import get_structured_completion
 from vectorstore.chromadb_store import ChromaDBVectorStore
@@ -36,36 +37,44 @@ class Retriever:
         """
         Retrieve relevant chunks from ChromaDB.
         """
-        filter_expr = None
-
+        where_filter = None
         if company and year:
-            filter_expr = (
-                f"company eq '{company}' "
-                f"and year eq '{year}'"
-            )
+            where_filter = {
+                "$and": [
+                    {"company": {"$eq": company}},
+                    {"year": {"$eq": str(year)}}
+                ]
+            }
+        elif company:
+            where_filter = {"company": {"$eq": company}}
+        elif year:
+            where_filter = {"year": {"$eq": str(year)}}
 
-        results = (
-            self.client.search(
-                search_text=query,
-                top=top_k,
-                filter=filter_expr
-            )
-            if filter_expr
-            else self.client.search(
-                search_text=query,
-                top=top_k
-            )
+        results = self.client.query(
+            query_texts=[query],
+            n_results=top_k,
+            where=where_filter,
+            include=["documents", "metadatas", "embeddings"]
         )
 
         documents = []
+        if results and results.get("documents"):
+            texts = results["documents"][0]
+            metadatas = results["metadatas"][0] if results.get("metadatas") else []
+            embeddings = results["embeddings"][0] if results.get("embeddings") else []
 
-        for result in results:
-            content = result.get("content", "")
-            documents.append(
-                SimpleNamespace(
-                    page_content=content
+            for i, text in enumerate(texts):
+                metadata = metadatas[i] if i < len(metadatas) else {}
+                embedding = embeddings[i] if i < len(embeddings) else None
+                documents.append(
+                    SimpleNamespace(
+                        page_content=text,
+                        embedding=embedding,
+                        page=metadata.get("page"),
+                        company=metadata.get("company"),
+                        source_file=metadata.get("source_file")
+                    )
                 )
-            )
 
         return documents
 
@@ -117,19 +126,37 @@ def retrieve_context(
             top_k=20
         )
         all_docs.extend(documents)
-    
-    # Remove duplicates while preserving order
-    seen = set()
+
+    SIMILARITY_THRESHOLD = 0.92  # tunable — above this = treat as duplicate
+
     unique_docs = []
+    unique_embeddings = []
+
     for doc in all_docs:
-        if doc.page_content not in seen:
-            seen.add(doc.page_content)
+        embedding = doc.embedding  # returned by ChromaDB alongside text
+
+        # Check against every already-kept chunk's embedding
+        is_duplicate = False
+        for kept_embedding in unique_embeddings:
+            similarity = cosine_similarity(embedding, kept_embedding)
+            if similarity > SIMILARITY_THRESHOLD:
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
             unique_docs.append(doc)
+            unique_embeddings.append(embedding)
     
     return "\n\n".join(
         doc.page_content
         for doc in unique_docs[:30]  # Limit to top 30 to avoid token issues
     )
+
+def cosine_similarity(vec1, vec2):
+    """Compute cosine similarity between two vectors."""
+    dot = np.dot(vec1, vec2)
+    norm = np.linalg.norm(vec1) * np.linalg.norm(vec2)
+    return dot / norm if norm > 0 else 0.0
 
 
 def build_extraction_prompt(
@@ -160,15 +187,16 @@ Extract the following information from the context:
 7. **Top Risk Factors**: List 3-5 main risks or challenges mentioned. Search for: "risks", "challenges", "uncertainties", "threats", "headwinds".
 8. **Top Growth Drivers**: List 3-5 main growth opportunities or drivers. Search for: "growth", "opportunities", "strategic initiatives", "new products", "expansion", "innovation".
 
-**IMPORTANT INSTRUCTIONS:**
-- Extract ONLY from the provided context.
-- Return null ONLY if the information is genuinely not in the context.
-- For Risk Factors and Growth Drivers: Even if not labeled as such, infer them from the business discussion.
-- Financial values must be returned in a consistent unit and format.
-- If the report indicates values are presented "in thousands" or "in millions", convert them to the corresponding full dollar amounts before returning.
-- Use commas and a leading currency symbol, for example: "$1,000,000".
-- For lists: Return as an array of strings.
-- Return VALID JSON ONLY, with the exact keys shown in the example below.
+**IMPORTANT INSTRUCTIONS — READ CAREFULLY:**
+- Extract ONLY from the text provided in the Context section above.
+- Do NOT use your training knowledge, memory, or any information not explicitly present in the Context.
+- If you are not certain a value appears in the Context, return null for that field.
+- Do NOT infer, estimate, or calculate values not directly stated.
+- Do NOT round or approximate — return the exact figure as written in the Context.
+- For Risk Factors and Growth Drivers only: you may infer from business discussion even if not explicitly labeled.
+- For all numeric fields: if the report states values are "in thousands" or "in millions", convert to full dollars.
+- Return null for any numeric field where you are less than fully certain the value is present in the Context.
+- Return VALID JSON ONLY. No markdown, no explanation, no additional keys.
 
 Example output format:
 {{
