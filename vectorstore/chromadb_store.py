@@ -145,24 +145,39 @@ class Retriever:
         elif year:
             where_filter = {"year": {"$eq": str(year)}}
 
-        # Query collection
+        # Query collection and include distances for similarity scoring
         results = self.collection.query(
             query_texts=[query],
             n_results=top_k,
-            where=where_filter
+            where=where_filter,
+            include=["documents", "metadatas", "distances"]
         )
 
         documents = []
         if results and results["documents"]:
             texts = results["documents"][0]
             metadatas = results.get("metadatas", [])[0] if results.get("metadatas") else []
+            distances = results.get("distances", [[]])[0]
+
             for i, doc_text in enumerate(texts):
                 metadata = metadatas[i] if i < len(metadatas) else {}
+                distance = distances[i] if i < len(distances) else 1.0
+                similarity = round(1 - distance, 4)
                 documents.append(SimpleNamespace(
                     page_content=doc_text,
                     page=metadata.get("page"),
                     company=metadata.get("company"),
-                    source_file=metadata.get("source_file")
+                    source_file=metadata.get("source_file"),
+                    similarity_score=similarity
                 ))
 
         return documents
+
+    def get_best_similarity(self, docs: list) -> float:
+        """
+        Return the highest similarity score from a list of retrieved docs.
+        Returns 0.0 if docs is empty.
+        """
+        if not docs:
+            return 0.0
+        return max(doc.similarity_score for doc in docs)

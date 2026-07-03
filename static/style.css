@@ -618,6 +618,20 @@ body {
 .section-title svg {
     width: 18px;
     height: 18px;
+}
+
+/* Not found in document warning badge */
+.not-found-badge {
+    font-size: 11px;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 6px;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    display: inline-block;
+    font-weight: 500;
+}
     stroke: var(--accent-blue);
     stroke-width: 2;
     fill: none;
