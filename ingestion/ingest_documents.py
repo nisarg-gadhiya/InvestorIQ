@@ -7,9 +7,8 @@ from llm.openai import get_embedding_model
 from ingestion.pdf_to_markdown import PDFToMarkdownConverter
 from ingestion.semantic_chunker import chunk_markdown
 from vectorstore.chromadb_store import ChromaDBVectorStore
-from rag.kpi_extractor_rag import extract_financial_metrics
+from rag.kpi_extractor_rag import extract_financial_metrics, Retriever
 from database.save_metrics import save_metrics
-from vectorstore.chromadb_store import Retriever
 
 load_dotenv()
 
